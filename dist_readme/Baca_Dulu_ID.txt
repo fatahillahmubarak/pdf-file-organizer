@@ -1,0 +1,61 @@
+====================================================
+ KATALOG PDF -- Baca dulu sebelum pakai
+====================================================
+
+CARA PAKAI
+----------
+1. Double-click KatalogPDF.exe
+2. Tunggu sebentar, jendela hitam akan muncul lalu browser terbuka otomatis
+   menampilkan aplikasinya. JANGAN tutup jendela hitam itu selagi masih
+   memakai aplikasinya.
+3. Ada 4 tab: Bangun Katalog, Cari, Cari Duplikat, dan Panduan.
+4. Pilih bahasa (Bahasa Indonesia / English) lewat dropdown di pojok kanan
+   atas aplikasi.
+
+FITUR YANG LANGSUNG BISA DIPAKAI (tanpa instalasi apa pun lagi)
+----------------------------------------------------------------
+- Bangun Katalog: scan folder PDF, hasilkan katalog Excel + index pencarian
+- Cari: cari dokumen berdasarkan judul/penulis/kata kunci/isi teks lengkap
+- Cari Duplikat: temukan file PDF yang isinya sama persis
+
+CATATAN SOAL OCR (untuk PDF hasil scan tanpa teks yang bisa di-copy)
+----------------------------------------------------------------------
+Fitur OCR BUTUH 2 program TAMBAHAN yang terpisah dari file .exe ini, yaitu
+Tesseract dan Poppler. Ini SATU-SATUNYA hal yang perlu diinstall manual --
+kalau kamu tidak akan memproses PDF hasil scan, lewati saja bagian ini.
+Tidak perlu buka terminal atau ketik command apa pun, cukup download &
+install seperti aplikasi Windows biasa.
+
+Langkah 1 -- Install Tesseract:
+  1. Buka https://github.com/UB-Mannheim/tesseract/wiki
+  2. Download & jalankan installer Windows-nya (.exe)
+  3. Biarkan opsi "Add to PATH" tetap tercentang
+  4. Kalau butuh bahasa selain Inggris (misal Bahasa Indonesia), centang
+     juga di bagian "Additional language data" saat instalasi
+
+Langkah 2 -- Install Poppler:
+  1. Buka https://github.com/oschwartz10612/poppler-windows/releases
+  2. Download file .zip di bagian "Assets" pada rilis paling atas
+  3. Extract ke folder mana saja, misalnya C:\poppler
+  4. Tambahkan folder Library\bin di dalamnya ke PATH Windows lewat
+     Start > "environment variables" > "Edit the system environment
+     variables" > "Environment Variables..." > User variables > Path >
+     Edit > New > tempel path lengkapnya (misal C:\poppler\Library\bin)
+
+Langkah 3 -- Tutup lalu buka lagi KatalogPDF.exe supaya PATH terbaca.
+
+Setelah itu, checkbox "Aktifkan OCR" di tab Bangun Katalog -> Opsi
+Lanjutan akan bisa dicentang. Untuk cek apakah instalasi berhasil, buka
+Command Prompt lalu ketik "tesseract --version" dan "pdftoppm -v" --
+kalau keduanya menampilkan nomor versi, berarti sudah siap.
+
+PRIVASI
+-------
+Semua proses berjalan di komputermu sendiri. Tidak ada file PDF atau
+isinya yang dikirim ke internet atau server mana pun.
+
+KONTAK
+------
+Dibuat oleh Muhammad Fatahillah Mubarak, dibantu oleh Claude (Anthropic)
+Email  : fatahillah.mubarak@gmail.com
+GitHub : https://github.com/fatahillahmubarak

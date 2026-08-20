@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# Data hasil scan (jangan ikut ke-commit -- ini bisa berisi info koleksi PDF pribadi orang)
+*.db
+*.xlsx
+!contoh/*.xlsx

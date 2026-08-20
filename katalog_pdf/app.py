@@ -1,0 +1,307 @@
+#!/usr/bin/env python3
+"""
+app.py
+======
+UI Streamlit untuk katalog_pdf (Bahasa Indonesia & English). Jalankan dengan:
+
+    streamlit run app.py
+    # atau, setelah "pip install katalog-pdf":
+    katalog-pdf ui
+
+Semua logika berat ada di core.py -- file ini murni tampilan & interaksi.
+Teks UI ada di i18n.py -- lihat file itu untuk menambah bahasa baru.
+"""
+
+import io
+from pathlib import Path
+
+import pandas as pd
+import streamlit as st
+
+from katalog_pdf import core
+from katalog_pdf.i18n import TRANSLATIONS, LANGUAGES
+
+# Nama bahasa OCR ditulis dalam bahasa aslinya masing-masing (endonim), jadi
+# tidak perlu diterjemahkan ulang -- tetap masuk akal dibaca di UI Indonesia
+# maupun English. Kode di sebelah kiri harus kode Tesseract yang valid.
+OCR_LANGUAGE_OPTIONS = [
+    ("eng", "English"),
+    ("ind", "Bahasa Indonesia"),
+    ("nld", "Nederlands (Dutch)"),
+    ("lat", "Latin"),
+    ("deu", "Deutsch (German)"),
+    ("fra", "Français (French)"),
+    ("spa", "Español (Spanish)"),
+    ("por", "Português (Portuguese)"),
+    ("ara", "العربية (Arabic)"),
+    ("chi_sim", "中文 (Chinese Simplified)"),
+    ("jpn", "日本語 (Japanese)"),
+    ("kor", "한국어 (Korean)"),
+]
+
+# ---------------------------------------------------------------------------
+# Bahasa / Language
+# ---------------------------------------------------------------------------
+if "lang" not in st.session_state:
+    st.session_state["lang"] = "id"
+
+st.set_page_config(page_title="Katalog PDF / PDF Catalog", page_icon="📚", layout="wide")
+
+_lang_codes = list(LANGUAGES.keys())
+_top_left, _top_right = st.columns([5, 1])
+with _top_right:
+    st.session_state["lang"] = st.selectbox(
+        "🌐", options=_lang_codes, format_func=lambda k: LANGUAGES[k],
+        index=_lang_codes.index(st.session_state["lang"]), key="lang_selector",
+        label_visibility="collapsed",
+    )
+
+LANG = st.session_state["lang"]
+T = TRANSLATIONS[LANG]
+
+# Terjemahan kolom tabel hasil (data mentahnya dari core.py selalu berbahasa
+# Indonesia -- ini cuma label tampilan, bukan mengubah data aslinya).
+_SEARCH_COLS = {
+    "id": {"judul": "judul", "penulis": "penulis", "tahun": "tahun",
+           "cuplikan_relevan": "cuplikan_relevan", "nama_file": "nama_file", "path_lengkap": "path_lengkap"},
+    "en": {"judul": "title", "penulis": "author", "tahun": "year",
+           "cuplikan_relevan": "snippet", "nama_file": "file_name", "path_lengkap": "full_path"},
+}
+_DUP_COLS = {
+    "id": {"grup_duplikat": "grup_duplikat", "jumlah_salinan": "jumlah_salinan",
+           "status_saran": "status_saran", "nama_file": "nama_file",
+           "ukuran_kb": "ukuran_kb", "path_lengkap": "path_lengkap"},
+    "en": {"grup_duplikat": "group", "jumlah_salinan": "copies",
+           "status_saran": "suggested_status", "nama_file": "file_name",
+           "ukuran_kb": "size_kb", "path_lengkap": "full_path"},
+}
+_DUP_STATUS = {
+    "simpan (paling lama)": {"id": "simpan (paling lama)", "en": "keep (oldest)"},
+    "kandidat dihapus": {"id": "kandidat dihapus", "en": "deletion candidate"},
+}
+
+
+def _localize_search_df(results: list) -> pd.DataFrame:
+    df = pd.DataFrame(results)[["judul", "penulis", "tahun", "cuplikan_relevan", "nama_file", "path_lengkap"]]
+    return df.rename(columns=_SEARCH_COLS[LANG])
+
+
+def _localize_dup_df(result) -> pd.DataFrame:
+    df = core.duplicates_to_dataframe(result)
+    df["status_saran"] = df["status_saran"].map(lambda s: _DUP_STATUS.get(s, {}).get(LANG, s))
+    return df.rename(columns=_DUP_COLS[LANG])
+
+
+def _read_bytes(path: str) -> bytes:
+    return Path(path).read_bytes()
+
+
+def _df_download_button(df: pd.DataFrame, label: str, file_name: str, key: str):
+    buf = io.BytesIO()
+    df.to_excel(buf, index=False)
+    st.download_button(label, data=buf.getvalue(), file_name=file_name,
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        key=key)
+
+
+with _top_left:
+    st.title(T["common"]["app_title"])
+st.caption(T["common"]["app_caption"])
+
+tab_build, tab_search, tab_dup, tab_help = st.tabs(
+    [T["common"]["tab_build"], T["common"]["tab_search"], T["common"]["tab_dup"], T["common"]["tab_help"]]
+)
+
+# ---------------------------------------------------------------------------
+# TAB 1: Bangun Katalog / Build Catalog
+# ---------------------------------------------------------------------------
+with tab_build:
+    TB = T["build"]
+    st.subheader(TB["subheader"])
+    st.write(TB["description"])
+
+    col1, col2 = st.columns(2)
+    with col1:
+        folder = st.text_input(TB["folder_label"], key="build_folder", placeholder=TB["folder_placeholder"])
+        output_xlsx = st.text_input(TB["output_label"], value="katalog_pdf.xlsx", key="build_output")
+    with col2:
+        db_path = st.text_input(TB["db_label"], value="katalog_pdf.db", key="build_db")
+        fresh = st.checkbox(TB["fresh_label"], value=False, key="build_fresh", help=TB["fresh_help"])
+
+    with st.expander(TB["advanced_expander"]):
+        max_pages = st.slider(TB["max_pages_label"], 5, 100, 20, key="build_max_pages")
+        use_ocr = st.checkbox(
+            TB["ocr_checkbox_label"],
+            value=False, key="build_ocr", disabled=not core.OCR_AVAILABLE,
+        )
+        if not core.OCR_AVAILABLE:
+            st.caption(TB["ocr_unavailable_caption"])
+        ocr_lang_codes = st.multiselect(
+            TB["ocr_lang_label"],
+            options=[code for code, _ in OCR_LANGUAGE_OPTIONS],
+            default=["eng"],
+            format_func=lambda code: dict(OCR_LANGUAGE_OPTIONS).get(code, code),
+            key="build_ocr_lang_multiselect",
+            disabled=not use_ocr,
+            help=TB["ocr_lang_help"],
+        )
+        ocr_lang_custom = st.text_input(
+            TB["ocr_lang_custom_label"], value="", key="build_ocr_lang_custom",
+            disabled=not use_ocr, help=TB["ocr_lang_custom_help"],
+        )
+        ocr_lang = ocr_lang_custom.strip() or "+".join(ocr_lang_codes) or "eng"
+        ocr_max_pages = st.slider(TB["ocr_max_pages_label"], 1, 20, 5, key="build_ocr_max_pages",
+                                   disabled=not use_ocr)
+        ocr_dpi = st.slider(TB["ocr_dpi_label"], 100, 400, 200, key="build_ocr_dpi", disabled=not use_ocr)
+
+    start = st.button(TB["start_button"], type="primary", key="build_start")
+
+    if start:
+        if not folder.strip():
+            st.error(TB["error_empty_folder"])
+        else:
+            progress_bar = st.progress(0.0)
+            status_text = st.empty()
+
+            def progress_cb(done, total, path):
+                progress_bar.progress(done / total if total else 1.0)
+                status_text.text(TB["progress_processing"].format(done=done, total=total, name=path.name))
+
+            try:
+                with st.spinner(TB["spinner_text"]):
+                    result = core.build_catalog(
+                        folder, output=output_xlsx, db=db_path, max_pages=max_pages,
+                        use_ocr=use_ocr, ocr_lang=ocr_lang, ocr_max_pages=ocr_max_pages,
+                        ocr_dpi=ocr_dpi, fresh=fresh, progress_cb=progress_cb,
+                    )
+            except (FileNotFoundError, RuntimeError) as e:
+                st.error(str(e))
+            else:
+                progress_bar.progress(1.0)
+                status_text.empty()
+                st.success(TB["success_text"])
+
+                m1, m2, m3, m4 = st.columns(4)
+                m1.metric(TB["metric_total_found"], result.total_found)
+                m2.metric(TB["metric_skipped"], result.n_skipped)
+                m3.metric(TB["metric_processed"], result.n_processed)
+                m4.metric(TB["metric_total_rows"], result.n_rows_in_excel)
+
+                if result.errors:
+                    with st.expander(TB["errors_expander"].format(count=len(result.errors))):
+                        st.dataframe(pd.DataFrame(result.errors, columns=["path", "error"]))
+
+                st.download_button(
+                    TB["download_button"], data=_read_bytes(output_xlsx),
+                    file_name=Path(output_xlsx).name,
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="build_download",
+                )
+                st.caption(TB["resume_caption"].format(db_path=db_path))
+
+# ---------------------------------------------------------------------------
+# TAB 2: Cari / Search
+# ---------------------------------------------------------------------------
+with tab_search:
+    TS = T["search"]
+    st.subheader(TS["subheader"])
+    st.write(TS["description"])
+
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        search_db = st.text_input(TS["db_label"], value="katalog_pdf.db", key="search_db")
+    with col2:
+        limit = st.number_input(TS["limit_label"], min_value=1, max_value=500, value=15, key="search_limit")
+
+    query = st.text_input(TS["query_label"], key="search_query", placeholder=TS["query_placeholder"])
+    st.caption(TS["tips_caption"])
+
+    if st.button(TS["search_button"], type="primary", key="search_start"):
+        if not query.strip():
+            st.error(TS["error_empty_query"])
+        else:
+            try:
+                results = core.search_catalog(search_db, query, int(limit))
+            except (FileNotFoundError, ValueError) as e:
+                st.error(str(e))
+            else:
+                st.session_state["_last_search_results"] = results
+                st.session_state["_last_search_query"] = query
+
+    results = st.session_state.get("_last_search_results")
+    if results is not None:
+        if not results:
+            st.info(TS["no_results"].format(query=st.session_state.get("_last_search_query")))
+        else:
+            st.write(TS["found_count"].format(count=len(results)))
+            df = _localize_search_df(results)
+            st.dataframe(df, use_container_width=True, hide_index=True)
+            _df_download_button(df, TS["download_button"], "hasil_pencarian.xlsx", key="search_download")
+
+# ---------------------------------------------------------------------------
+# TAB 3: Cari Duplikat / Find Duplicates
+# ---------------------------------------------------------------------------
+with tab_dup:
+    TD = T["dup"]
+    st.subheader(TD["subheader"])
+    st.write(TD["description"])
+
+    dup_folder = st.text_input(TD["folder_label"], key="dup_folder", placeholder=T["build"]["folder_placeholder"])
+
+    if st.button(TD["button"], type="primary", key="dup_start"):
+        if not dup_folder.strip():
+            st.error(TD["error_empty_folder"])
+        else:
+            progress_bar = st.progress(0.0)
+            status_text = st.empty()
+
+            def dup_progress_cb(done, total):
+                progress_bar.progress(done / total if total else 1.0)
+                status_text.text(TD["progress_checking"].format(done=done, total=total))
+
+            try:
+                with st.spinner(TD["spinner_text"]):
+                    result = core.find_duplicates(dup_folder, progress_cb=dup_progress_cb)
+            except FileNotFoundError as e:
+                st.error(str(e))
+            else:
+                progress_bar.progress(1.0)
+                status_text.empty()
+                st.session_state["_last_dup_result"] = result
+
+    result = st.session_state.get("_last_dup_result")
+    if result is not None:
+        m1, m2, m3 = st.columns(3)
+        m1.metric(TD["metric_total_checked"], result.total_checked)
+        m2.metric(TD["metric_groups_found"], len(result.groups))
+        m3.metric(TD["metric_wasted_space"], f"{round(result.total_wasted_kb / 1024, 1)} MB")
+
+        if not result.groups:
+            st.success(TD["no_duplicates"])
+        else:
+            df = _localize_dup_df(result)
+            st.dataframe(df, use_container_width=True, hide_index=True)
+            _df_download_button(df, TD["download_button"], "duplikat_pdf.xlsx", key="dup_download")
+
+        if result.errors:
+            with st.expander(TD["errors_expander"].format(count=len(result.errors))):
+                st.dataframe(pd.DataFrame(result.errors, columns=["path", "error"]))
+
+# ---------------------------------------------------------------------------
+# TAB 4: Panduan / Guide
+# ---------------------------------------------------------------------------
+with tab_help:
+    TH = T["help"]
+    st.subheader(TH["subheader"])
+    st.markdown(TH["body"])
+
+    st.divider()
+    TC = T["credits"]
+    st.subheader(TC["title"])
+    st.markdown(TC["body"])
+
+# ---------------------------------------------------------------------------
+# Footer -- muncul di bawah semua tab, apa pun tab yang lagi aktif
+# ---------------------------------------------------------------------------
+st.divider()
+st.caption(T["credits"]["footer"])
