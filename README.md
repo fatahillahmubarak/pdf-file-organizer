@@ -17,8 +17,9 @@ di komputermu sendiri** -- tidak ada file yang di-upload ke mana pun.
   teks lengkap ratusan PDF sekaligus, lewat index SQLite FTS5.
 - **Cari duplikat**: temukan file PDF yang isinya identik (berdasarkan hash
   isi file, bukan cuma nama file) dan berapa ruang disk yang bisa dihemat.
-- **Export Excel**: hasil katalog & pencarian bisa disimpan sebagai `.xlsx`
-  untuk dibuka/difilter manual.
+- **Export multi-format**: hasil katalog & pencarian bisa disimpan sebagai
+  Excel (`.xlsx`), CSV, JSON, ODS (LibreOffice), TSV, atau tabel Markdown --
+  tinggal pilih dari dropdown format di tiap tombol download.
 - **OCR opsional**: untuk PDF hasil scan yang tidak punya text layer
   (cocok untuk teks cetak, bukan tulisan tangan).
 
@@ -104,8 +105,10 @@ katalog-pdf search "ekonomi AND makro"                 # operator boolean
 # 3. Cari duplikat
 katalog-pdf duplicates "/path/ke/folder/pdf"
 
-# 4. Export ulang Excel dari database yang sudah ada (tanpa scan ulang)
+# 4. Export ulang dari database yang sudah ada (tanpa scan ulang) --
+#    format ditentukan dari ekstensi --output: .xlsx, .csv, .json, .ods, .tsv, atau .md
 katalog-pdf export katalog_pdf.db --output katalog_pdf.xlsx
+katalog-pdf export katalog_pdf.db --output katalog_pdf.json
 ```
 
 Jalankan `katalog-pdf <subcommand> --help` untuk melihat semua opsi

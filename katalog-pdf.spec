@@ -29,7 +29,7 @@ datas = [('katalog_pdf', 'katalog_pdf')]
 binaries = []
 hiddenimports = []
 
-for pkg in ('streamlit', 'pypdf', 'openpyxl', 'pandas'):
+for pkg in ('streamlit', 'pypdf', 'openpyxl', 'pandas', 'tabulate', 'odf'):
     pkg_datas, pkg_binaries, pkg_hiddenimports = collect_all(pkg)
     datas += pkg_datas
     binaries += pkg_binaries

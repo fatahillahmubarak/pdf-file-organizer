@@ -16,6 +16,7 @@ Dependencies: pip install katalog-pdf   (atau, dari source: pip install -e .)
 
 import argparse
 import sys
+from pathlib import Path
 
 from . import core
 
@@ -94,11 +95,27 @@ def _cmd_duplicates(args):
 
 
 def _cmd_export(args):
+    output_path = Path(args.output)
+    ext = output_path.suffix.lower().lstrip(".") or "xlsx"
+    if ext not in core.EXPORT_FORMATS:
+        sys.exit(
+            f"Format '.{ext}' tidak didukung. Gunakan salah satu ekstensi: "
+            f"{', '.join(core.EXPORT_FORMATS)}. / "
+            f"Format '.{ext}' is not supported. Use one of: {', '.join(core.EXPORT_FORMATS)}."
+        )
+
+    n_problem = 0
     try:
-        n_rows, n_problem = core.export_excel_from_db_path(args.db, args.output)
+        if ext == "xlsx":
+            n_rows, n_problem = core.export_excel_from_db_path(args.db, args.output)
+        else:
+            df = core.load_catalog_dataframe(args.db)
+            output_path.write_bytes(core.dataframe_to_export_bytes(df, ext))
+            n_rows = len(df)
     except (FileNotFoundError, ValueError) as e:
         sys.exit(str(e))
-    print(f"Berhasil! Excel katalog tersimpan: {args.output} ({n_rows} baris)")
+
+    print(f"Berhasil! Katalog format {ext.upper()} tersimpan: {args.output} ({n_rows} baris)")
     if n_problem:
         print(f"Catatan: {n_problem} sel butuh pembersihan ekstra.")
 
@@ -139,9 +156,16 @@ def main():
     p_dup.add_argument("--output", default="duplikat_pdf.xlsx")
     p_dup.set_defaults(func=_cmd_duplicates)
 
-    p_export = sub.add_parser("export", help="Export ulang Excel dari database yang sudah ada")
+    p_export = sub.add_parser(
+        "export",
+        help=(
+            "Export ulang dari database yang sudah ada -- format ditentukan dari "
+            "ekstensi --output (.xlsx, .csv, .json, .ods, .tsv, atau .md)"
+        ),
+    )
     p_export.add_argument("db")
-    p_export.add_argument("--output", default="katalog_pdf.xlsx")
+    p_export.add_argument("--output", default="katalog_pdf.xlsx",
+                           help="Nama file output -- pakai ekstensi .xlsx atau .csv")
     p_export.set_defaults(func=_cmd_export)
 
     p_ui = sub.add_parser("ui", help="Buka user interface (Streamlit) di browser")

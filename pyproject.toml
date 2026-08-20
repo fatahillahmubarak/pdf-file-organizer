@@ -25,6 +25,8 @@ dependencies = [
     "openpyxl>=3.1",
     "streamlit>=1.30",
     "tqdm>=4.65",
+    "tabulate>=0.9",   # dipakai buat export format Markdown table
+    "odfpy>=1.4",      # dipakai buat export format ODS (OpenDocument / LibreOffice)
 ]
 
 [project.optional-dependencies]

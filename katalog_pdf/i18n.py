@@ -34,6 +34,16 @@ TRANSLATIONS = {
             "tab_dup": "🧹 Cari Duplikat",
             "tab_help": "ℹ️ Panduan",
             "lang_label": "Bahasa",
+            "export_format_label": "Pilih format export:",
+            "export_format_names": {
+                "xlsx": "Excel (.xlsx)",
+                "csv": "CSV (.csv)",
+                "json": "JSON (.json)",
+                "ods": "OpenDocument / LibreOffice (.ods)",
+                "tsv": "Tab-separated (.tsv)",
+                "md": "Tabel Markdown (.md)",
+            },
+            "export_download_button": "⬇️ Download ({format})",
         },
         "build": {
             "subheader": "Scan folder PDF & bangun katalog",
@@ -79,7 +89,6 @@ TRANSLATIONS = {
             "metric_processed": "Baru diproses run ini",
             "metric_total_rows": "Total baris di katalog",
             "errors_expander": "⚠️ {count} file gagal dibaca",
-            "download_button": "⬇️ Download katalog Excel",
             "resume_caption": (
                 "Index pencarian tersimpan di `{db_path}` -- kalau proses ini kamu ulang lagi "
                 "nanti (misal ada PDF baru ditambahkan ke folder), file yang sudah pernah "
@@ -101,7 +110,6 @@ TRANSLATIONS = {
             "error_empty_query": "Isi dulu kata kuncinya.",
             "no_results": 'Tidak ada hasil untuk: "{query}"',
             "found_count": "Ditemukan **{count}** hasil:",
-            "download_button": "⬇️ Download hasil pencarian (Excel)",
         },
         "dup": {
             "subheader": "Cari file PDF duplikat",
@@ -119,7 +127,6 @@ TRANSLATIONS = {
             "metric_groups_found": "Grup duplikat ditemukan",
             "metric_wasted_space": "Perkiraan ruang dihemat",
             "no_duplicates": "Tidak ditemukan file duplikat. Koleksi kamu bersih!",
-            "download_button": "⬇️ Download laporan duplikat (Excel)",
             "errors_expander": "⚠️ {count} file gagal dibaca",
         },
         "help": {
@@ -240,6 +247,16 @@ isinya yang dikirim ke internet atau server mana pun.
             "tab_dup": "🧹 Find Duplicates",
             "tab_help": "ℹ️ Guide",
             "lang_label": "Language",
+            "export_format_label": "Choose export format:",
+            "export_format_names": {
+                "xlsx": "Excel (.xlsx)",
+                "csv": "CSV (.csv)",
+                "json": "JSON (.json)",
+                "ods": "OpenDocument / LibreOffice (.ods)",
+                "tsv": "Tab-separated (.tsv)",
+                "md": "Markdown table (.md)",
+            },
+            "export_download_button": "⬇️ Download ({format})",
         },
         "build": {
             "subheader": "Scan a PDF folder & build the catalog",
@@ -285,7 +302,6 @@ isinya yang dikirim ke internet atau server mana pun.
             "metric_processed": "Newly processed this run",
             "metric_total_rows": "Total rows in catalog",
             "errors_expander": "⚠️ {count} file(s) failed to read",
-            "download_button": "⬇️ Download Excel catalog",
             "resume_caption": (
                 "The search index is saved at `{db_path}` -- if you run this again later "
                 "(e.g. new PDFs added to the folder), files already processed are "
@@ -307,7 +323,6 @@ isinya yang dikirim ke internet atau server mana pun.
             "error_empty_query": "Please enter a keyword first.",
             "no_results": 'No results found for: "{query}"',
             "found_count": "Found **{count}** result(s):",
-            "download_button": "⬇️ Download search results (Excel)",
         },
         "dup": {
             "subheader": "Find duplicate PDFs",
@@ -325,7 +340,6 @@ isinya yang dikirim ke internet atau server mana pun.
             "metric_groups_found": "Duplicate groups found",
             "metric_wasted_space": "Estimated space to reclaim",
             "no_duplicates": "No duplicate files found. Your collection is clean!",
-            "download_button": "⬇️ Download duplicate report (Excel)",
             "errors_expander": "⚠️ {count} file(s) failed to read",
         },
         "help": {

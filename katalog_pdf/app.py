@@ -39,6 +39,19 @@ OCR_LANGUAGE_OPTIONS = [
     ("kor", "한국어 (Korean)"),
 ]
 
+# Urutan & MIME type format export yang ditawarkan di tombol download tiap
+# tab. "xlsx" ditaruh paling pertama karena paling umum dipakai; sisanya
+# (core.EXPORT_FORMATS) dihasilkan lewat core.dataframe_to_export_bytes().
+EXPORT_FORMAT_ORDER = list(core.EXPORT_FORMATS)
+EXPORT_MIME = {
+    "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "csv": "text/csv",
+    "tsv": "text/tab-separated-values",
+    "json": "application/json",
+    "md": "text/markdown",
+    "ods": "application/vnd.oasis.opendocument.spreadsheet",
+}
+
 # ---------------------------------------------------------------------------
 # Bahasa / Language
 # ---------------------------------------------------------------------------
@@ -96,12 +109,30 @@ def _read_bytes(path: str) -> bytes:
     return Path(path).read_bytes()
 
 
-def _df_download_button(df: pd.DataFrame, label: str, file_name: str, key: str):
-    buf = io.BytesIO()
-    df.to_excel(buf, index=False)
-    st.download_button(label, data=buf.getvalue(), file_name=file_name,
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        key=key)
+def _export_format_picker(key: str) -> str:
+    TC = T["common"]
+    return st.selectbox(
+        TC["export_format_label"], options=EXPORT_FORMAT_ORDER,
+        format_func=lambda f: TC["export_format_names"][f],
+        key=key,
+    )
+
+
+def _df_to_export_bytes(df: pd.DataFrame, fmt: str) -> bytes:
+    if fmt == "xlsx":
+        buf = io.BytesIO()
+        df.to_excel(buf, index=False)
+        return buf.getvalue()
+    return core.dataframe_to_export_bytes(df, fmt)
+
+
+def _export_download_button(df: pd.DataFrame, fmt: str, base_filename: str, key: str):
+    TC = T["common"]
+    data = _df_to_export_bytes(df, fmt)
+    st.download_button(
+        TC["export_download_button"].format(format=TC["export_format_names"][fmt]),
+        data=data, file_name=f"{base_filename}.{fmt}", mime=EXPORT_MIME[fmt], key=key,
+    )
 
 
 with _top_left:
@@ -179,25 +210,55 @@ with tab_build:
             else:
                 progress_bar.progress(1.0)
                 status_text.empty()
-                st.success(TB["success_text"])
+                # Simpan hasilnya di session_state (bukan cuma variabel lokal) --
+                # supaya tetap tampil setelah rerun, misalnya begitu tombol
+                # download di-klik (st.download_button juga memicu rerun seperti
+                # tombol biasa, dan tanpa ini seluruh blok "if start:" ini jadi
+                # False lagi sehingga hasil & tombol downloadnya hilang).
+                st.session_state["_last_build_result"] = result
+                st.session_state["_last_build_output_xlsx"] = output_xlsx
+                st.session_state["_last_build_db_path"] = db_path
 
-                m1, m2, m3, m4 = st.columns(4)
-                m1.metric(TB["metric_total_found"], result.total_found)
-                m2.metric(TB["metric_skipped"], result.n_skipped)
-                m3.metric(TB["metric_processed"], result.n_processed)
-                m4.metric(TB["metric_total_rows"], result.n_rows_in_excel)
+    build_result = st.session_state.get("_last_build_result")
+    if build_result is not None:
+        st.success(TB["success_text"])
 
-                if result.errors:
-                    with st.expander(TB["errors_expander"].format(count=len(result.errors))):
-                        st.dataframe(pd.DataFrame(result.errors, columns=["path", "error"]))
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric(TB["metric_total_found"], build_result.total_found)
+        m2.metric(TB["metric_skipped"], build_result.n_skipped)
+        m3.metric(TB["metric_processed"], build_result.n_processed)
+        m4.metric(TB["metric_total_rows"], build_result.n_rows_in_excel)
 
-                st.download_button(
-                    TB["download_button"], data=_read_bytes(output_xlsx),
-                    file_name=Path(output_xlsx).name,
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    key="build_download",
+        if build_result.errors:
+            with st.expander(TB["errors_expander"].format(count=len(build_result.errors))):
+                st.dataframe(pd.DataFrame(build_result.errors, columns=["path", "error"]))
+
+        saved_output_xlsx = st.session_state["_last_build_output_xlsx"]
+        saved_db_path = st.session_state["_last_build_db_path"]
+
+        build_fmt = _export_format_picker(key="build_export_format")
+        if build_fmt == "xlsx":
+            # Format xlsx langsung dari file yang sudah ditulis build_catalog()
+            # di disk (lebih aman untuk isi sel bermasalah, lihat catatan di
+            # core.dataframe_to_export_bytes), bukan dibuat ulang dari DataFrame.
+            st.download_button(
+                T["common"]["export_download_button"].format(
+                    format=T["common"]["export_format_names"]["xlsx"]),
+                data=_read_bytes(saved_output_xlsx),
+                file_name=Path(saved_output_xlsx).name,
+                mime=EXPORT_MIME["xlsx"],
+                key="build_download",
+            )
+        else:
+            try:
+                catalog_df = core.load_catalog_dataframe(saved_db_path)
+            except (FileNotFoundError, ValueError):
+                catalog_df = None
+            if catalog_df is not None:
+                _export_download_button(
+                    catalog_df, build_fmt, Path(saved_output_xlsx).stem, key="build_download",
                 )
-                st.caption(TB["resume_caption"].format(db_path=db_path))
+        st.caption(TB["resume_caption"].format(db_path=saved_db_path))
 
 # ---------------------------------------------------------------------------
 # TAB 2: Cari / Search
@@ -236,7 +297,8 @@ with tab_search:
             st.write(TS["found_count"].format(count=len(results)))
             df = _localize_search_df(results)
             st.dataframe(df, use_container_width=True, hide_index=True)
-            _df_download_button(df, TS["download_button"], "hasil_pencarian.xlsx", key="search_download")
+            search_fmt = _export_format_picker(key="search_export_format")
+            _export_download_button(df, search_fmt, "hasil_pencarian", key="search_download")
 
 # ---------------------------------------------------------------------------
 # TAB 3: Cari Duplikat / Find Duplicates
@@ -281,7 +343,8 @@ with tab_dup:
         else:
             df = _localize_dup_df(result)
             st.dataframe(df, use_container_width=True, hide_index=True)
-            _df_download_button(df, TD["download_button"], "duplikat_pdf.xlsx", key="dup_download")
+            dup_fmt = _export_format_picker(key="dup_export_format")
+            _export_download_button(df, dup_fmt, "duplikat_pdf", key="dup_download")
 
         if result.errors:
             with st.expander(TD["errors_expander"].format(count=len(result.errors))):

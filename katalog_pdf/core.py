@@ -14,6 +14,7 @@ langsung jalan" jadi "fungsi yang bisa dipanggil dan diberi progress callback".
 """
 
 import hashlib
+import io
 import re
 import sqlite3
 import unicodedata
@@ -266,9 +267,11 @@ def export_excel_from_db(conn: sqlite3.Connection, output_path: str) -> int:
     return len(df)
 
 
-def export_excel_from_db_path(db_path: str, output_path: str) -> tuple[int, int]:
-    """Sama seperti export_excel_from_db, tapi menerima path .db dan juga
-    mentolerir database versi lama (tanpa kolom pages/size_kb/status)."""
+def load_catalog_dataframe(db_path: str) -> pd.DataFrame:
+    """Baca ulang seluruh isi database jadi DataFrame pandas -- dipakai bersama
+    oleh export_excel_from_db_path() dan export_csv_from_db_path() (dan bisa
+    dipakai langsung dari UI untuk generate file in-memory tanpa nulis ke disk).
+    Mentolerir database versi lama (tanpa kolom pages/size_kb/status)."""
     conn = sqlite3.connect(str(db_path))
     cur = conn.cursor()
     cur.execute("PRAGMA table_info(catalog)")
@@ -301,6 +304,13 @@ def export_excel_from_db_path(db_path: str, output_path: str) -> tuple[int, int]
     for col in df.columns:
         if df[col].dtype == object:
             df[col] = df[col].apply(sanitize_for_excel)
+    return df
+
+
+def export_excel_from_db_path(db_path: str, output_path: str) -> tuple[int, int]:
+    """Sama seperti export_excel_from_db, tapi menerima path .db dan juga
+    mentolerir database versi lama (tanpa kolom pages/size_kb/status)."""
+    df = load_catalog_dataframe(db_path)
 
     wb = Workbook()
     ws = wb.active
@@ -313,6 +323,52 @@ def export_excel_from_db_path(db_path: str, output_path: str) -> tuple[int, int]
                 n_problem_cells += 1
     wb.save(output_path)
     return len(df), n_problem_cells
+
+
+EXPORT_FORMATS = ("xlsx", "csv", "json", "ods", "tsv", "md")
+
+
+def dataframe_to_export_bytes(df: pd.DataFrame, fmt: str) -> bytes:
+    """Ubah DataFrame katalog jadi bytes sesuai format yang diminta -- dipakai
+    bersama oleh CLI (export ke file) dan UI (tombol download). Format yang
+    didukung: 'csv', 'tsv', 'json', 'md' (tabel Markdown), 'ods'
+    (OpenDocument / LibreOffice Calc). Untuk 'xlsx', dianjurkan tetap pakai
+    export_excel_from_db_path() / export_excel_from_db() secara langsung
+    (bukan lewat fungsi ini) karena keduanya memakai write_cell_safely yang
+    lebih toleran terhadap isi sel bermasalah (misal teks yang diawali "=",
+    yang oleh Excel bisa disalahartikan sebagai formula)."""
+    if fmt == "csv":
+        # utf-8-sig: supaya karakter non-ASCII (misal huruf ber-aksen) tetap
+        # tampil benar kalau file-nya dibuka di Excel.
+        return df.to_csv(index=False).encode("utf-8-sig")
+    if fmt == "tsv":
+        return df.to_csv(index=False, sep="\t").encode("utf-8-sig")
+    if fmt == "json":
+        return df.to_json(orient="records", indent=2, force_ascii=False).encode("utf-8")
+    if fmt == "md":
+        return df.to_markdown(index=False).encode("utf-8")
+    if fmt == "ods":
+        buf = io.BytesIO()
+        df.to_excel(buf, index=False, engine="odf")
+        return buf.getvalue()
+    if fmt == "xlsx":
+        buf = io.BytesIO()
+        df.to_excel(buf, index=False)
+        return buf.getvalue()
+    raise ValueError(
+        f"Format export tidak dikenal: '{fmt}'. Format yang didukung: "
+        f"{', '.join(EXPORT_FORMATS)}. / "
+        f"Unknown export format: '{fmt}'. Supported formats: {', '.join(EXPORT_FORMATS)}."
+    )
+
+
+def export_csv_from_db_path(db_path: str, output_path: str) -> int:
+    """Sama seperti export_excel_from_db_path, tapi hasilnya file .csv --
+    lebih ringan dan gampang dibuka di tool lain (Google Sheets, database,
+    dll) tanpa perlu Excel."""
+    df = load_catalog_dataframe(db_path)
+    Path(output_path).write_bytes(dataframe_to_export_bytes(df, "csv"))
+    return len(df)
 
 
 # ---------------------------------------------------------------------------
