@@ -10,3 +10,5 @@ venv/
 *.db
 *.xlsx
 !contoh/*.xlsx
+*.zip
+/KatalogPDF-v0.2.0-windows
