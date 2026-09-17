@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "katalog-pdf"
-version = "0.3.0"
+version = "0.3.1"
 description = "Katalogkan, cari (full-text), temukan duplikat (identik & mirip), dan dapatkan saran rename otomatis (DOI/ISBN) di koleksi file PDF -- lewat CLI atau UI Streamlit."
 readme = "README.md"
 requires-python = ">=3.9"
