@@ -245,17 +245,44 @@ def extract_isbn(text: str) -> str:
     return ""
 
 
-def _sanitize_filename_piece(value: str, max_len: int = 150) -> str:
-    """Buang karakter yang tidak boleh ada di nama file Windows/macOS/Linux."""
+def _sanitize_filename_piece(value: str, max_len: int = 150, strip_trailing_dot: bool = True) -> str:
+    """Buang karakter yang tidak boleh ada di nama file Windows/macOS/Linux.
+
+    strip_trailing_dot=False dipakai khusus untuk potongan nama penulis --
+    "et al." SENGAJA diakhiri titik, jadi tidak boleh ikut kepotong seperti
+    titik nyasar di akhir judul/nama file biasa."""
     value = re.sub(r'[\\/:*?"<>|]', "", value or "").strip()
     value = re.sub(r"\s+", " ", value)
-    return value[:max_len].rstrip(" .")
+    value = value[:max_len]
+    return value.rstrip(" .") if strip_trailing_dot else value.rstrip(" ")
+
+
+def format_authors_apa(authors: str) -> str:
+    """Ringkas daftar penulis ke gaya APA (edisi 7, yang paling umum dipakai
+    sekarang): 1 penulis apa adanya, 2 penulis "A & B", 3 penulis atau lebih
+    diringkas jadi "A et al." -- ini konvensi yang sama yang dipakai manual
+    di batch-1/batch-2 project Rename File (lihat contoh "Deer et al.",
+    "Nicholson et al." di kedua folder itu).
+
+    `authors` diasumsikan berupa nama (biasanya nama belakang) yang
+    dipisah koma/titik-koma/"&"/" and " -- format yang dihasilkan
+    lookup_crossref()/lookup_google_books() di atas. Kalau cuma satu
+    potongan (tidak ada pemisah yang dikenali), dikembalikan apa adanya."""
+    if not authors:
+        return authors
+    parts = [p.strip() for p in re.split(r",|;|&| and ", authors) if p.strip()]
+    if len(parts) <= 1:
+        return authors.strip()
+    if len(parts) == 2:
+        return f"{parts[0]} & {parts[1]}"
+    return f"{parts[0]} et al."
 
 
 def build_suggested_filename(doc_type: str, authors: str, year: str, title: str) -> str:
     """Susun nama file sesuai konvensi TYPE_(Author, Year)_Judul yang dipakai
-    manual di batch-1/batch-2 project Rename File."""
-    author_part = _sanitize_filename_piece(authors, 80) or "Unknown"
+    manual di batch-1/batch-2 project Rename File -- penulisnya diringkas
+    dulu ke gaya APA lewat format_authors_apa() sebelum masuk nama file."""
+    author_part = _sanitize_filename_piece(format_authors_apa(authors), 80, strip_trailing_dot=False) or "Unknown"
     year_part = _sanitize_filename_piece(year, 12) or "n.d."
     title_part = _sanitize_filename_piece(title) or "Untitled"
     doc_type = doc_type or "PAPER"
@@ -513,7 +540,13 @@ def write_rename_powershell_script(
         new_name = s.suggested_filename.replace('"', "'")
         lines.append(f'Rename-Item -LiteralPath "{old_path}" -NewName "{new_name}"')
         n += 1
-    Path(output_path).write_text("\n".join(lines) + "\n", encoding="utf-8")
+    # "utf-8-sig" (BOM) -- bukan cuma "utf-8" biasa -- supaya Windows
+    # PowerShell versi lama (powershell.exe / 5.1, bukan pwsh 7) ikut
+    # membaca file ini sebagai UTF-8. Tanpa BOM, powershell.exe classic
+    # membaca .ps1 pakai code page ANSI sistem, jadi nama penulis dengan
+    # huruf non-ASCII (contoh: "Mihaljević", "García", "Québec") berubah
+    # jadi karakter acak begitu di-Rename-Item.
+    Path(output_path).write_text("\n".join(lines) + "\n", encoding="utf-8-sig")
     return n
 
 
