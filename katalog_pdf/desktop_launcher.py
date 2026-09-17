@@ -9,10 +9,24 @@ dan double-click .exe-nya.
 
 Untuk pemakaian normal sehari-hari (kamu sendiri, sudah ada Python/conda),
 TIDAK perlu file ini -- cukup pakai `katalog-pdf ui` atau Buka_Katalog_PDF.bat.
+
+Mode tampilan (sejak v0.4.0):
+Secara default .exe ini mencoba membuka window aplikasi NATIVE lewat pywebview
+(bukan tab browser) supaya terasa seperti "aplikasi beneran", bukan halaman
+web. Streamlit tetap jalan seperti biasa di background -- pywebview cuma
+membungkusnya ke window OS asli (pakai WebView2 di Windows). Kalau pywebview
+atau WebView2 Runtime tidak tersedia/gagal karena alasan apa pun, otomatis
+JATUH KEMBALI (fallback) ke cara lama: buka tab browser default. Jadi app ini
+tetap bisa dipakai walau WebView2 belum terinstall di komputer pemakainya.
 """
 
 import os
+import socket
 import sys
+import threading
+import time
+import urllib.error
+import urllib.request
 
 # Kalau dijalankan langsung sebagai script (python katalog_pdf/desktop_launcher.py,
 # bukan lewat PyInstaller), folder project (bukan folder katalog_pdf/ itu sendiri)
@@ -45,10 +59,10 @@ def _redirect_stdio_when_windowed():
     katalog-pdf.spec), Windows tidak kasih proses ini stdout/stderr sama
     sekali -- sys.stdout dan sys.stderr jadi None, bukan cuma kosong. Kalau
     dibiarkan, print() atau logging apa pun (termasuk dari dalam Streamlit
-    sendiri) bakal crash dengan AttributeError begitu app dibuka. Redirect
-    ke file log di %LOCALAPPDATA% supaya tetap ada tempat nulis, dan supaya
-    ada log yang bisa dicek kalau ada masalah waktu app dijalankan tanpa
-    konsol."""
+    sendiri, atau dari pywebview) bakal crash dengan AttributeError begitu
+    app dibuka. Redirect ke file log di %LOCALAPPDATA% supaya tetap ada
+    tempat nulis, dan supaya ada log yang bisa dicek kalau ada masalah waktu
+    app dijalankan tanpa konsol."""
     if sys.stdout is not None and sys.stderr is not None:
         return
     log_dir = os.path.join(
@@ -60,10 +74,111 @@ def _redirect_stdio_when_windowed():
     sys.stderr = log_file
 
 
+def _find_free_port() -> int:
+    """Cari port TCP kosong di 127.0.0.1 dengan cara bind ke port 0 (OS yang
+    pilihkan port bebas), lalu langsung dilepas lagi supaya Streamlit bisa
+    pakai port itu. Dipakai supaya .exe tidak bentrok kalau port default
+    Streamlit (8501) sedang dipakai proses lain di komputer pemakai."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+def _wait_until_server_ready(port: int, timeout: float = 30.0) -> bool:
+    """Tunggu sampai server Streamlit di localhost:port benar-benar merespons,
+    sebelum window pywebview dibuka -- supaya tidak muncul window kosong/error
+    "connection refused" karena Streamlit-nya belum selesai start."""
+    url = f"http://127.0.0.1:{port}"
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            with urllib.request.urlopen(url, timeout=1.0):
+                return True
+        except (urllib.error.URLError, ConnectionError, OSError):
+            time.sleep(0.25)
+    return False
+
+
+def _run_streamlit_in_background(app_path: str, port: int) -> None:
+    """Jalankan server Streamlit di thread daemon terpisah lewat
+    streamlit.web.bootstrap, bukan lewat streamlit.web.cli seperti mode tab
+    browser -- ini supaya proses utama tetap bebas untuk menjalankan loop
+    window pywebview di thread utama (dibutuhkan oleh pywebview/WebView2 di
+    Windows)."""
+    from streamlit.web import bootstrap
+
+    flag_options = {
+        "global.developmentMode": False,
+        "server.headless": True,
+        "server.port": port,
+        "server.address": "127.0.0.1",
+        "browser.gatherUsageStats": False,
+    }
+
+    def _serve():
+        bootstrap.run(app_path, False, [], flag_options)
+
+    thread = threading.Thread(target=_serve, daemon=True)
+    thread.start()
+
+
+def _run_as_native_window(app_path: str) -> bool:
+    """Coba jalankan app sebagai window aplikasi native lewat pywebview.
+    Return True kalau berhasil dibuka (dan sudah selesai jalan sampai window
+    ditutup pemakai) -- False kalau ada apa pun yang gagal (pywebview belum
+    terinstall, WebView2 Runtime tidak ada di komputer pemakai, dll), supaya
+    caller bisa fallback ke tab browser."""
+    try:
+        import webview  # pywebview
+    except ImportError:
+        return False
+
+    try:
+        port = _find_free_port()
+        _run_streamlit_in_background(app_path, port)
+
+        if not _wait_until_server_ready(port, timeout=30.0):
+            return False
+
+        webview.create_window(
+            "PDF File Organizer",
+            f"http://127.0.0.1:{port}",
+            width=1280,
+            height=860,
+            min_size=(900, 600),
+        )
+        # gui="edgechromium" -- backend Windows berbasis WebView2, paling
+        # umum sudah terinstall bawaan di Windows 10/11. Kalau tidak
+        # tersedia, pywebview akan melempar exception di sini, yang
+        # ditangkap di bawah supaya bisa fallback ke tab browser.
+        webview.start(gui="edgechromium")
+        return True
+    except Exception:
+        # Sengaja tangkap Exception apa pun (bukan cuma ImportError) --
+        # kombinasi pywebview + WebView2 + PyInstaller cukup dikenal rawan
+        # gagal dengan cara yang beragam (DLL tidak ketemu, .NET runtime
+        # tidak ada, dsb). Daripada .exe crash total, lebih aman jatuh
+        # kembali ke tab browser yang sudah terbukti jalan.
+        return False
+
+
+def _run_in_browser_tab(app_path: str) -> None:
+    """Cara lama (sebelum v0.4.0): jalankan Streamlit lewat CLI-nya sendiri,
+    yang otomatis membuka tab browser default. Dipakai sebagai fallback kalau
+    mode window native (pywebview) tidak tersedia/gagal."""
+    from streamlit.web import cli as stcli
+
+    sys.argv = [
+        "streamlit", "run", app_path,
+        "--global.developmentMode=false",
+        "--server.headless=false",
+    ]
+    sys.exit(stcli.main())
+
+
 def main():
     _redirect_stdio_when_windowed()
 
-    from streamlit.web import cli as stcli
     from katalog_pdf.core import ensure_streamlit_no_prompt
 
     ensure_streamlit_no_prompt()
@@ -72,12 +187,10 @@ def main():
     if not os.path.exists(app_path):
         sys.exit(f"Tidak menemukan app.py di: {app_path}")
 
-    sys.argv = [
-        "streamlit", "run", app_path,
-        "--global.developmentMode=false",
-        "--server.headless=false",
-    ]
-    sys.exit(stcli.main())
+    if _run_as_native_window(app_path):
+        return
+
+    _run_in_browser_tab(app_path)
 
 
 if __name__ == "__main__":

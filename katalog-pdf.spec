@@ -25,11 +25,18 @@
 
 from PyInstaller.utils.hooks import collect_all, copy_metadata
 
+# 'webview' (pywebview) dipakai supaya .exe buka window aplikasi native,
+# bukan tab browser -- wajib terinstall di environment build ini lewat
+# extra [build] (lihat pyproject.toml). Kalau belum: pip install
+# "katalog-pdf[build,ocr]". Runtime-nya sendiri (WebView2 Runtime di
+# Windows) tidak ikut dibungkus -- kalau tidak ada di komputer pemakai,
+# desktop_launcher.py otomatis jatuh kembali (fallback) buka tab browser.
+
 datas = [('katalog_pdf', 'katalog_pdf')]
 binaries = []
 hiddenimports = []
 
-for pkg in ('streamlit', 'pypdf', 'openpyxl', 'pandas', 'tabulate', 'odf'):
+for pkg in ('streamlit', 'pypdf', 'openpyxl', 'pandas', 'tabulate', 'odf', 'webview'):
     pkg_datas, pkg_binaries, pkg_hiddenimports = collect_all(pkg)
     datas += pkg_datas
     binaries += pkg_binaries

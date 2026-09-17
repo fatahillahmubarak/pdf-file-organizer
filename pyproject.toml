@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "katalog-pdf"
-version = "0.3.2"
+version = "0.4.0"
 description = "Katalogkan, cari (full-text), temukan duplikat (identik & mirip), dan dapatkan saran rename otomatis (DOI/ISBN) di koleksi file PDF -- lewat CLI atau UI Streamlit."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -31,7 +31,11 @@ dependencies = [
 
 [project.optional-dependencies]
 ocr = ["pytesseract>=0.3.10", "pdf2image>=1.16"]
-build = ["pyinstaller>=6.0"]
+build = [
+    "pyinstaller>=6.0",
+    "pywebview>=5.0",
+    "pythonnet>=3.0; sys_platform == 'win32'",
+]
 
 [project.scripts]
 katalog-pdf = "katalog_pdf.cli:main"

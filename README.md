@@ -51,6 +51,12 @@ Cari Duplikat langsung bisa dipakai tanpa instalasi tambahan apa pun.
 (Fitur OCR butuh 2 program tambahan yang diinstall terpisah, tanpa pip/terminal --
 lihat bagian **Prasyarat** di bawah.)
 
+Sejak v0.4.0, `.exe` ini membuka window aplikasi native (bukan tab browser)
+lewat WebView2 -- fitur bawaan Windows 10/11 yang biasanya sudah terinstall
+otomatis. Kalau WebView2 belum ada di komputer kamu, tidak masalah: app
+otomatis jatuh kembali (fallback) buka tab browser seperti versi
+sebelumnya, jadi tetap bisa dipakai normal.
+
 **Opsi 2 -- Lewat pip (kalau sudah punya Python)**
 
 ```bash
@@ -160,6 +166,10 @@ PyInstaller kadang butuh 1-2 kali percobaan. Kalau muncul error semacam
 `PackageNotFoundError` yang menyebut nama library tertentu, biasanya cukup
 ditambahkan lewat `copy_metadata('nama-library')` di `katalog-pdf.spec`,
 lalu jalankan ulang `pyinstaller katalog-pdf.spec`.
+
+Extra `[build]` sekarang juga mengikutkan `pywebview` (+ `pythonnet` di
+Windows) supaya `.exe` hasil build bisa buka window native -- lihat
+penjelasan WebView2/fallback di bagian **Instalasi** di atas.
 
 Catatan soal lisensi OCR: library Python `pytesseract` dan `pdf2image`
 (berlisensi permisif -- Apache 2.0 / MIT) ikut dibungkus ke dalam `.exe`

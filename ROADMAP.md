@@ -28,8 +28,11 @@ dikerjakan di rilis berikutnya (bukan untuk rilis `.exe` v1 pertama ini).
   sekarang redirect keduanya ke file log di
   `%LOCALAPPDATA%\KatalogPDF\katalog-pdf.log` kalau perlu, supaya
   print()/logging dari Streamlit tidak bikin app crash begitu dibuka.
-- [ ] **UI jadi window aplikasi asli (bukan tab browser)**: opsi
-  `pywebview` sudah dipertimbangkan (bungkus server Streamlit yang sama
-  ke window native, tanpa perlu tulis ulang app.py/i18n.py) -- belum
-  dikerjakan, nunggu keputusan lanjut.
+- [x] **UI jadi window aplikasi asli (bukan tab browser)**: `.exe` sekarang
+  coba buka window aplikasi native lewat `pywebview` (backend WebView2 di
+  Windows) dulu, bukan langsung tab browser -- server Streamlit yang sama
+  persis, cuma dibungkus ke window OS asli, tanpa tulis ulang
+  app.py/i18n.py. Kalau pywebview/WebView2 Runtime tidak ada atau gagal
+  di komputer pemakai, otomatis jatuh kembali (fallback) ke tab browser
+  seperti sebelumnya -- jadi tetap bisa dipakai di semua kondisi.
 - [ ] (tambahkan ide lain di sini seiring berjalannya waktu)
