@@ -40,7 +40,29 @@ def _resource_path(relative_path: str) -> str:
     return os.path.join(base_path, relative_path)
 
 
+def _redirect_stdio_when_windowed():
+    """Kalau di-bundle PyInstaller TANPA jendela konsol (console=False di
+    katalog-pdf.spec), Windows tidak kasih proses ini stdout/stderr sama
+    sekali -- sys.stdout dan sys.stderr jadi None, bukan cuma kosong. Kalau
+    dibiarkan, print() atau logging apa pun (termasuk dari dalam Streamlit
+    sendiri) bakal crash dengan AttributeError begitu app dibuka. Redirect
+    ke file log di %LOCALAPPDATA% supaya tetap ada tempat nulis, dan supaya
+    ada log yang bisa dicek kalau ada masalah waktu app dijalankan tanpa
+    konsol."""
+    if sys.stdout is not None and sys.stderr is not None:
+        return
+    log_dir = os.path.join(
+        os.environ.get("LOCALAPPDATA") or os.path.expanduser("~"), "KatalogPDF"
+    )
+    os.makedirs(log_dir, exist_ok=True)
+    log_file = open(os.path.join(log_dir, "katalog-pdf.log"), "a", encoding="utf-8")
+    sys.stdout = log_file
+    sys.stderr = log_file
+
+
 def main():
+    _redirect_stdio_when_windowed()
+
     from streamlit.web import cli as stcli
     from katalog_pdf.core import ensure_streamlit_no_prompt
 

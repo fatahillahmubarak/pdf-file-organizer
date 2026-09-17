@@ -78,5 +78,9 @@ exe = EXE(
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=True,
+    # False -- tanpa jendela konsol hitam. Streamlit tetap jalan normal,
+    # cuma tidak ada window terminal yang nongol pas .exe dibuka (lihat
+    # penjelasan di desktop_launcher.py soal kenapa stdout/stderr perlu
+    # dialihkan ke file log begitu konsolnya disembunyikan).
+    console=False,
 )

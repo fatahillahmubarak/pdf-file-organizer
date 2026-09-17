@@ -22,4 +22,14 @@ dikerjakan di rilis berikutnya (bukan untuk rilis `.exe` v1 pertama ini).
   & B", 3+ penulis "A et al."), plus opsi download script PowerShell rename
   (selalu perlu direview manual dulu). Ada di tab baru "🏷️ Saran Rename" dan
   CLI (`katalog-pdf suggest-renames <folder>`).
+- [x] **Sembunyikan jendela konsol saat .exe dibuka**: sudah selesai --
+  `console=False` di `katalog-pdf.spec`. Karena Windows tidak kasih
+  stdout/stderr sama sekali ke proses tanpa konsol, `desktop_launcher.py`
+  sekarang redirect keduanya ke file log di
+  `%LOCALAPPDATA%\KatalogPDF\katalog-pdf.log` kalau perlu, supaya
+  print()/logging dari Streamlit tidak bikin app crash begitu dibuka.
+- [ ] **UI jadi window aplikasi asli (bukan tab browser)**: opsi
+  `pywebview` sudah dipertimbangkan (bungkus server Streamlit yang sama
+  ke window native, tanpa perlu tulis ulang app.py/i18n.py) -- belum
+  dikerjakan, nunggu keputusan lanjut.
 - [ ] (tambahkan ide lain di sini seiring berjalannya waktu)
