@@ -4,15 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "katalog-pdf"
-version = "0.1.0"
-description = "Katalogkan, cari (full-text), dan temukan duplikat di koleksi file PDF -- lewat CLI atau UI Streamlit."
+version = "0.3.0"
+description = "Katalogkan, cari (full-text), temukan duplikat (identik & mirip), dan dapatkan saran rename otomatis (DOI/ISBN) di koleksi file PDF -- lewat CLI atau UI Streamlit."
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
 authors = [
     { name = "Fatahillah", email = "fatahillah.mubarak@gmail.com" },
 ]
-keywords = ["pdf", "catalog", "katalog", "full-text-search", "duplicate-finder", "streamlit"]
+keywords = ["pdf", "catalog", "katalog", "full-text-search", "duplicate-finder", "near-duplicate", "rename", "doi", "isbn", "streamlit"]
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",
@@ -37,8 +37,8 @@ build = ["pyinstaller>=6.0"]
 katalog-pdf = "katalog_pdf.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/fatahillahmubarak/PDF-Catalog"
-Issues = "https://github.com/fatahillahmubarak/PDF-Catalog/issues"
+Homepage = "https://github.com/fatahillahmubarak/pdf-file-organizer"
+Issues = "https://github.com/fatahillahmubarak/pdf-file-organizer/issues"
 
 [tool.setuptools.packages.find]
 include = ["katalog_pdf*"]

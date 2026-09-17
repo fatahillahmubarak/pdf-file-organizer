@@ -32,6 +32,7 @@ TRANSLATIONS = {
             "tab_build": "📂 Bangun Katalog",
             "tab_search": "🔍 Cari",
             "tab_dup": "🧹 Cari Duplikat",
+            "tab_rename": "🏷️ Saran Rename",
             "tab_help": "ℹ️ Panduan",
             "lang_label": "Bahasa",
             "export_format_label": "Pilih format export:",
@@ -128,6 +129,65 @@ TRANSLATIONS = {
             "metric_wasted_space": "Perkiraan ruang dihemat",
             "no_duplicates": "Tidak ditemukan file duplikat. Koleksi kamu bersih!",
             "errors_expander": "⚠️ {count} file gagal dibaca",
+            "near_dup_divider_title": "🔎 Cari Duplikat MIRIP (isi teks, bukan hash exact)",
+            "near_dup_description": (
+                "Fitur di atas cuma menangkap file yang isinya identik 100% (byte-per-byte). "
+                "Fitur ini membandingkan **isi teks** tiap PDF -- jadi bisa menemukan buku yang "
+                "sama tapi di-scan dua kali, atau cetakan ulang yang isinya nyaris sama tapi "
+                "filenya secara teknis berbeda. Ini **heuristik** (bukan kepastian 100%) dan "
+                "lebih lambat dari cek exact -- selalu cek manual dulu sebelum menghapus apa pun."
+            ),
+            "near_dup_button": "🔎 Cari Duplikat Mirip",
+            "near_dup_spinner_text": "Membandingkan isi teks tiap file (bisa beberapa menit)...",
+            "near_dup_progress_checking": "Membaca {done}/{total} file...",
+            "near_dup_metric_groups_found": "Grup kemungkinan mirip",
+            "near_dup_no_duplicates": "Tidak ditemukan kemungkinan duplikat mirip.",
+            "near_dup_warning": (
+                "⚠️ Ini hasil heuristik berbasis kemiripan teks, BUKAN kepastian -- selalu buka "
+                "dan bandingkan manual dulu, terutama baris yang catatannya menyebut jumlah "
+                "halaman berbeda."
+            ),
+            "near_dup_advanced_expander": "Opsi lanjutan (ambang kemiripan)",
+            "near_dup_similarity_label": "Ambang kemiripan teks (0-1)",
+            "near_dup_similarity_help": "Naikkan kalau terlalu banyak hasil yang meleset (false-positive), turunkan kalau ada duplikat yang tidak terdeteksi.",
+        },
+        "rename": {
+            "subheader": "Saran rename otomatis (DOI/ISBN)",
+            "description": (
+                "Untuk tiap PDF, fitur ini mencari nomor **DOI** atau **ISBN** di dalam teksnya, "
+                "lalu mencocokkannya ke database **Crossref** (untuk paper/jurnal) atau **Google "
+                "Books** (untuk buku) secara otomatis -- lalu mengusulkan nama file format "
+                "`TIPE_(Penulis, Tahun)_Judul`. **Butuh koneksi internet.** Tidak ada file yang "
+                "langsung di-rename -- kamu selalu review dulu hasilnya sebelum menjalankan "
+                "script rename-nya."
+            ),
+            "folder_label": "Path folder PDF",
+            "email_label": "Email kontak (opsional, disarankan)",
+            "email_help": (
+                "Kalau diisi, request ke Crossref masuk 'polite pool' mereka -- biasanya lebih "
+                "jarang kena rate-limit. Emailmu tidak dipakai untuk hal lain."
+            ),
+            "advanced_expander": "Opsi lanjutan",
+            "max_pages_label": "Maks halaman dibaca per PDF (cari DOI/ISBN)",
+            "button": "🏷️ Cari Saran Rename",
+            "error_empty_folder": "Isi dulu path foldernya.",
+            "spinner_text": "Mendeteksi DOI/ISBN & mencari metadata (butuh internet, bisa beberapa menit)...",
+            "progress_processing": "Memproses {done}/{total}: {name}",
+            "metric_total_found": "Total file diperiksa",
+            "metric_high": "Confidence High",
+            "metric_medium": "Confidence Medium",
+            "metric_low": "Confidence Low (perlu cek manual)",
+            "high_help": "DOI/ISBN ketemu & lengkap -- cukup aman untuk auto-rename.",
+            "low_help": "Tidak ada DOI/ISBN yang cocok -- PERLU diverifikasi manual sebelum rename.",
+            "ps1_subheader": "Script rename PowerShell",
+            "ps1_min_confidence_label": "Confidence minimum yang dimasukkan ke script",
+            "ps1_download_button": "⬇️ Download script rename (.ps1)",
+            "ps1_warning": (
+                "⚠️ SELALU buka & baca dulu isi script sebelum dijalankan -- ini cuma usulan, "
+                "kamu yang memutuskan mana yang benar-benar mau di-rename. Setiap baris cuma "
+                "me-rename file di tempat, tidak memindahkan atau mengubah isinya."
+            ),
+            "errors_expander": "⚠️ {count} file gagal diproses",
         },
         "help": {
             "subheader": "Panduan singkat",
@@ -245,6 +305,7 @@ isinya yang dikirim ke internet atau server mana pun.
             "tab_build": "📂 Build Catalog",
             "tab_search": "🔍 Search",
             "tab_dup": "🧹 Find Duplicates",
+            "tab_rename": "🏷️ Suggest Rename",
             "tab_help": "ℹ️ Guide",
             "lang_label": "Language",
             "export_format_label": "Choose export format:",
@@ -341,6 +402,63 @@ isinya yang dikirim ke internet atau server mana pun.
             "metric_wasted_space": "Estimated space to reclaim",
             "no_duplicates": "No duplicate files found. Your collection is clean!",
             "errors_expander": "⚠️ {count} file(s) failed to read",
+            "near_dup_divider_title": "🔎 Find SIMILAR Duplicates (text content, not exact hash)",
+            "near_dup_description": (
+                "The feature above only catches files that are 100% identical (byte-for-byte). "
+                "This one compares each PDF's **text content** -- so it can find the same book "
+                "scanned twice, or a reprint whose content is nearly identical even though the "
+                "file is technically different. This is a **heuristic** (not a 100% guarantee) "
+                "and slower than the exact check -- always double-check manually before deleting anything."
+            ),
+            "near_dup_button": "🔎 Find Similar Duplicates",
+            "near_dup_spinner_text": "Comparing each file's text content (can take a few minutes)...",
+            "near_dup_progress_checking": "Reading {done}/{total} files...",
+            "near_dup_metric_groups_found": "Possibly-similar groups",
+            "near_dup_no_duplicates": "No possible similar duplicates found.",
+            "near_dup_warning": (
+                "⚠️ This is a text-similarity heuristic, NOT a certainty -- always open and "
+                "compare manually first, especially rows whose note mentions a different page count."
+            ),
+            "near_dup_advanced_expander": "Advanced options (similarity threshold)",
+            "near_dup_similarity_label": "Text similarity threshold (0-1)",
+            "near_dup_similarity_help": "Raise it if you're getting too many false positives, lower it if some duplicates go undetected.",
+        },
+        "rename": {
+            "subheader": "Automatic rename suggestions (DOI/ISBN)",
+            "description": (
+                "For each PDF, this looks for a **DOI** or **ISBN** number in its text, then "
+                "automatically matches it against **Crossref** (for papers/journals) or "
+                "**Google Books** (for books) -- and proposes a filename in the format "
+                "`TYPE_(Author, Year)_Title`. **Requires an internet connection.** No file is "
+                "renamed directly -- you always review the results before running the rename script."
+            ),
+            "folder_label": "PDF folder path",
+            "email_label": "Contact email (optional, recommended)",
+            "email_help": (
+                "If filled in, requests to Crossref join their 'polite pool' -- usually less "
+                "likely to be rate-limited. Your email isn't used for anything else."
+            ),
+            "advanced_expander": "Advanced options",
+            "max_pages_label": "Max pages read per PDF (to find DOI/ISBN)",
+            "button": "🏷️ Find Rename Suggestions",
+            "error_empty_folder": "Please enter the folder path first.",
+            "spinner_text": "Detecting DOI/ISBN & looking up metadata (needs internet, can take a few minutes)...",
+            "progress_processing": "Processing {done}/{total}: {name}",
+            "metric_total_found": "Total files checked",
+            "metric_high": "High confidence",
+            "metric_medium": "Medium confidence",
+            "metric_low": "Low confidence (needs manual check)",
+            "high_help": "DOI/ISBN found & complete -- reasonably safe to auto-rename.",
+            "low_help": "No matching DOI/ISBN -- NEEDS manual verification before renaming.",
+            "ps1_subheader": "PowerShell rename script",
+            "ps1_min_confidence_label": "Minimum confidence included in the script",
+            "ps1_download_button": "⬇️ Download rename script (.ps1)",
+            "ps1_warning": (
+                "⚠️ ALWAYS open and read the script before running it -- this is only a "
+                "suggestion, you decide what actually gets renamed. Each line only renames a "
+                "file in place, it never moves or changes its contents."
+            ),
+            "errors_expander": "⚠️ {count} file(s) failed to process",
         },
         "help": {
             "subheader": "Quick guide",

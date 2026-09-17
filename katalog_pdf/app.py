@@ -13,6 +13,7 @@ Teks UI ada di i18n.py -- lihat file itu untuk menambah bahasa baru.
 """
 
 import io
+import tempfile
 from pathlib import Path
 
 import pandas as pd
@@ -92,6 +93,20 @@ _DUP_STATUS = {
     "simpan (paling lama)": {"id": "simpan (paling lama)", "en": "keep (oldest)"},
     "kandidat dihapus": {"id": "kandidat dihapus", "en": "deletion candidate"},
 }
+_NEAR_DUP_COLS = {
+    "id": {"grup_mirip": "grup_mirip", "jumlah_salinan": "jumlah_salinan",
+           "status_saran": "status_saran", "nama_file": "nama_file",
+           "judul_terdeteksi": "judul_terdeteksi", "halaman": "halaman",
+           "ukuran_kb": "ukuran_kb", "catatan": "catatan", "path_lengkap": "path_lengkap"},
+    "en": {"grup_mirip": "similar_group", "jumlah_salinan": "copies",
+           "status_saran": "suggested_status", "nama_file": "file_name",
+           "judul_terdeteksi": "detected_title", "halaman": "pages",
+           "ukuran_kb": "size_kb", "catatan": "note", "path_lengkap": "full_path"},
+}
+_NEAR_DUP_STATUS = {
+    "kandidat simpan": {"id": "kandidat simpan", "en": "candidate to keep"},
+    "cek sebelum dihapus": {"id": "cek sebelum dihapus", "en": "check before deleting"},
+}
 
 
 def _localize_search_df(results: list) -> pd.DataFrame:
@@ -103,6 +118,12 @@ def _localize_dup_df(result) -> pd.DataFrame:
     df = core.duplicates_to_dataframe(result)
     df["status_saran"] = df["status_saran"].map(lambda s: _DUP_STATUS.get(s, {}).get(LANG, s))
     return df.rename(columns=_DUP_COLS[LANG])
+
+
+def _localize_near_dup_df(result) -> pd.DataFrame:
+    df = core.near_duplicates_to_dataframe(result)
+    df["status_saran"] = df["status_saran"].map(lambda s: _NEAR_DUP_STATUS.get(s, {}).get(LANG, s))
+    return df.rename(columns=_NEAR_DUP_COLS[LANG])
 
 
 def _read_bytes(path: str) -> bytes:
@@ -139,8 +160,9 @@ with _top_left:
     st.title(T["common"]["app_title"])
 st.caption(T["common"]["app_caption"])
 
-tab_build, tab_search, tab_dup, tab_help = st.tabs(
-    [T["common"]["tab_build"], T["common"]["tab_search"], T["common"]["tab_dup"], T["common"]["tab_help"]]
+tab_build, tab_search, tab_dup, tab_rename, tab_help = st.tabs(
+    [T["common"]["tab_build"], T["common"]["tab_search"], T["common"]["tab_dup"],
+     T["common"]["tab_rename"], T["common"]["tab_help"]]
 )
 
 # ---------------------------------------------------------------------------
@@ -350,8 +372,138 @@ with tab_dup:
             with st.expander(TD["errors_expander"].format(count=len(result.errors))):
                 st.dataframe(pd.DataFrame(result.errors, columns=["path", "error"]))
 
+    st.divider()
+    st.subheader(TD["near_dup_divider_title"])
+    st.write(TD["near_dup_description"])
+
+    with st.expander(TD["near_dup_advanced_expander"]):
+        near_dup_similarity = st.slider(
+            TD["near_dup_similarity_label"], 0.0, 1.0, 0.6, step=0.05,
+            key="near_dup_similarity", help=TD["near_dup_similarity_help"],
+        )
+
+    if st.button(TD["near_dup_button"], type="primary", key="near_dup_start"):
+        if not dup_folder.strip():
+            st.error(TD["error_empty_folder"])
+        else:
+            near_dup_progress_bar = st.progress(0.0)
+            near_dup_status_text = st.empty()
+
+            def near_dup_progress_cb(done, total):
+                near_dup_progress_bar.progress(done / total if total else 1.0)
+                near_dup_status_text.text(TD["near_dup_progress_checking"].format(done=done, total=total))
+
+            try:
+                with st.spinner(TD["near_dup_spinner_text"]):
+                    near_dup_result = core.find_near_duplicates(
+                        dup_folder, similarity_threshold=near_dup_similarity,
+                        progress_cb=near_dup_progress_cb,
+                    )
+            except FileNotFoundError as e:
+                st.error(str(e))
+            else:
+                near_dup_progress_bar.progress(1.0)
+                near_dup_status_text.empty()
+                st.session_state["_last_near_dup_result"] = near_dup_result
+
+    near_dup_result = st.session_state.get("_last_near_dup_result")
+    if near_dup_result is not None:
+        m1, m2 = st.columns(2)
+        m1.metric(TD["metric_total_checked"], near_dup_result.total_checked)
+        m2.metric(TD["near_dup_metric_groups_found"], len(near_dup_result.groups))
+
+        if not near_dup_result.groups:
+            st.success(TD["near_dup_no_duplicates"])
+        else:
+            st.warning(TD["near_dup_warning"])
+            near_dup_df = _localize_near_dup_df(near_dup_result)
+            st.dataframe(near_dup_df, use_container_width=True, hide_index=True)
+            near_dup_fmt = _export_format_picker(key="near_dup_export_format")
+            _export_download_button(near_dup_df, near_dup_fmt, "duplikat_mirip_pdf", key="near_dup_download")
+
+        if near_dup_result.errors:
+            with st.expander(TD["errors_expander"].format(count=len(near_dup_result.errors))):
+                st.dataframe(pd.DataFrame(near_dup_result.errors, columns=["path", "error"]))
+
 # ---------------------------------------------------------------------------
-# TAB 4: Panduan / Guide
+# TAB 4: Saran Rename / Suggest Rename
+# ---------------------------------------------------------------------------
+with tab_rename:
+    TR = T["rename"]
+    st.subheader(TR["subheader"])
+    st.write(TR["description"])
+
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        rename_folder = st.text_input(
+            TR["folder_label"], key="rename_folder", placeholder=T["build"]["folder_placeholder"],
+        )
+    with col2:
+        rename_email = st.text_input(TR["email_label"], key="rename_email", help=TR["email_help"])
+
+    with st.expander(TR["advanced_expander"]):
+        rename_max_pages = st.slider(TR["max_pages_label"], 5, 60, 25, key="rename_max_pages")
+
+    if st.button(TR["button"], type="primary", key="rename_start"):
+        if not rename_folder.strip():
+            st.error(TR["error_empty_folder"])
+        else:
+            rename_progress_bar = st.progress(0.0)
+            rename_status_text = st.empty()
+
+            def rename_progress_cb(done, total, path):
+                rename_progress_bar.progress(done / total if total else 1.0)
+                rename_status_text.text(TR["progress_processing"].format(done=done, total=total, name=path.name))
+
+            try:
+                with st.spinner(TR["spinner_text"]):
+                    rename_result = core.suggest_renames(
+                        rename_folder, max_pages=rename_max_pages,
+                        contact_email=rename_email.strip() or None,
+                        progress_cb=rename_progress_cb,
+                    )
+            except FileNotFoundError as e:
+                st.error(str(e))
+            else:
+                rename_progress_bar.progress(1.0)
+                rename_status_text.empty()
+                st.session_state["_last_rename_result"] = rename_result
+
+    rename_result = st.session_state.get("_last_rename_result")
+    if rename_result is not None:
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric(TR["metric_total_found"], rename_result.total_found)
+        m2.metric(TR["metric_high"], rename_result.n_high, help=TR["high_help"])
+        m3.metric(TR["metric_medium"], rename_result.n_medium)
+        m4.metric(TR["metric_low"], rename_result.n_low, help=TR["low_help"])
+
+        rename_df = core.rename_suggestions_to_dataframe(rename_result)
+        st.dataframe(rename_df, use_container_width=True, hide_index=True)
+        rename_fmt = _export_format_picker(key="rename_export_format")
+        _export_download_button(rename_df, rename_fmt, "saran_rename", key="rename_download")
+
+        st.divider()
+        st.subheader(TR["ps1_subheader"])
+        st.warning(TR["ps1_warning"])
+        ps1_min_confidence = st.selectbox(
+            TR["ps1_min_confidence_label"], options=["High", "Medium", "Low"], key="rename_ps1_min_confidence",
+        )
+        with tempfile.NamedTemporaryFile(mode="r", suffix=".ps1", delete=False) as _tmp:
+            _tmp_path = _tmp.name
+        core.write_rename_powershell_script(rename_result, _tmp_path, min_confidence=ps1_min_confidence)
+        ps1_bytes = Path(_tmp_path).read_bytes()
+        Path(_tmp_path).unlink(missing_ok=True)
+        st.download_button(
+            TR["ps1_download_button"], data=ps1_bytes, file_name="rename_pdf.ps1",
+            mime="text/plain", key="rename_ps1_download",
+        )
+
+        if rename_result.errors:
+            with st.expander(TR["errors_expander"].format(count=len(rename_result.errors))):
+                st.dataframe(pd.DataFrame(rename_result.errors, columns=["path", "error"]))
+
+# ---------------------------------------------------------------------------
+# TAB 5: Panduan / Guide
 # ---------------------------------------------------------------------------
 with tab_help:
     TH = T["help"]

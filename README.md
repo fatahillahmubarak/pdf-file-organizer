@@ -1,4 +1,10 @@
-# 📚 Katalog PDF
+# 📚 PDF File Organizer
+
+*(Sebelumnya bernama "Katalog PDF" / "PDF-Catalog" -- nama & repo
+diperbarui supaya lebih mencerminkan fiturnya yang sekarang lebih dari
+sekadar katalog. Perintah CLI (`katalog-pdf`), nama package Python
+(`katalog_pdf`), dan nama file `.exe` (`KatalogPDF.exe`) TIDAK berubah --
+link/perintah lama tetap jalan seperti biasa.)*
 
 Tool untuk mengkatalogkan, mencari (full-text search), dan menemukan file
 duplikat di koleksi PDF-mu -- lewat UI Streamlit yang enak dipakai, atau
@@ -17,6 +23,16 @@ di komputermu sendiri** -- tidak ada file yang di-upload ke mana pun.
   teks lengkap ratusan PDF sekaligus, lewat index SQLite FTS5.
 - **Cari duplikat**: temukan file PDF yang isinya identik (berdasarkan hash
   isi file, bukan cuma nama file) dan berapa ruang disk yang bisa dihemat.
+- **Cari duplikat MIRIP (near-duplicate)**: selain duplikat identik
+  byte-per-byte di atas, fitur ini membandingkan **isi teks** tiap PDF untuk
+  menemukan buku yang sama tapi di-scan dua kali, atau cetakan ulang yang
+  isinya nyaris sama tapi filenya berbeda secara teknis.
+- **Saran rename otomatis (DOI/ISBN)**: deteksi DOI/ISBN tiap PDF, cocokkan
+  otomatis ke Crossref (paper) atau Google Books (buku), lalu usulkan nama
+  file format `TIPE_(Penulis, Tahun)_Judul` (gaya APA -- 1 penulis apa
+  adanya, 2 penulis "A & B", 3+ penulis "A et al."). Tidak ada file yang
+  langsung di-rename -- selalu lewat review manual dulu sebelum menjalankan
+  script rename-nya.
 - **Export multi-format**: hasil katalog & pencarian bisa disimpan sebagai
   Excel (`.xlsx`), CSV, JSON, ODS (LibreOffice), TSV, atau tabel Markdown --
   tinggal pilih dari dropdown format di tiap tombol download.
@@ -29,7 +45,7 @@ Pilih salah satu, dari yang paling gampang:
 
 **Opsi 1 -- Download `.exe` (paling gampang, tidak perlu install Python sama sekali)**
 
-Download `KatalogPDF.exe` dari halaman [Releases](https://github.com/fatahillahmubarak/PDF-Catalog/releases),
+Download `KatalogPDF.exe` dari halaman [Releases](https://github.com/fatahillahmubarak/pdf-file-organizer/releases),
 taruh di folder mana saja, lalu double-click. Fitur Bangun Katalog, Cari, dan
 Cari Duplikat langsung bisa dipakai tanpa instalasi tambahan apa pun.
 (Fitur OCR butuh 2 program tambahan yang diinstall terpisah, tanpa pip/terminal --
@@ -45,8 +61,8 @@ katalog-pdf ui
 **Opsi 3 -- Dari source code (untuk developer / mau modifikasi)**
 
 ```bash
-git clone https://github.com/fatahillahmubarak/PDF-Catalog.git
-cd PDF-Catalog
+git clone https://github.com/fatahillahmubarak/pdf-file-organizer.git
+cd pdf-file-organizer
 pip install -e .
 katalog-pdf ui
 ```
@@ -88,8 +104,9 @@ tangan**, hasilnya biasanya kurang bisa dipakai.
 katalog-pdf ui
 ```
 
-Ini akan membuka tab baru di browser dengan 3 fitur utama: **Bangun
-Katalog**, **Cari**, dan **Cari Duplikat**.
+Ini akan membuka tab baru di browser dengan 4 fitur utama: **Bangun
+Katalog**, **Cari**, **Cari Duplikat** (termasuk mode near-duplicate),
+dan **Saran Rename** (deteksi DOI/ISBN).
 
 ## Pakai lewat command line
 

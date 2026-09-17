@@ -13,12 +13,19 @@ build_catalog.py, search_catalog.py, find_duplicates.py, export_excel_from_db.py
 langsung jalan" jadi "fungsi yang bisa dipanggil dan diberi progress callback".
 """
 
+import difflib
 import hashlib
 import io
+import itertools
+import json
 import re
 import sqlite3
+import time
 import unicodedata
-from collections import Counter
+import urllib.error
+import urllib.parse
+import urllib.request
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
@@ -199,6 +206,315 @@ def read_pdf(path: Path, max_pages: int, use_ocr: bool = False, ocr_lang: str = 
         result["_full_text"] = ""
 
     return result
+
+
+# ---------------------------------------------------------------------------
+# Deteksi DOI/ISBN & saran rename otomatis -- otomatisasi dari langkah yang
+# sebelumnya dikerjakan manual (riset DOI lewat Crossref, ISBN lewat Google
+# Books, lalu susun nama file) di project "Rename File".
+# ---------------------------------------------------------------------------
+
+DOI_RE = re.compile(r'\b10\.\d{4,9}/[^\s"<>\)\]]+', re.IGNORECASE)
+ISBN_RE = re.compile(
+    r'\bISBN(?:-1[03])?\s*[:\s]*((?:97[89][-\s]?)?(?:\d[-\s]?){9}[\dXx])\b',
+    re.IGNORECASE,
+)
+
+
+def extract_doi(text: str) -> str:
+    """Cari DOI pertama yang masuk akal (pola resmi 10.xxxx/...) di teks bebas."""
+    if not text:
+        return ""
+    match = DOI_RE.search(text)
+    if not match:
+        return ""
+    return match.group(0).rstrip(".,;:)]}>\"'").lower()
+
+
+def extract_isbn(text: str) -> str:
+    """Cari ISBN-10/13 di teks bebas (butuh label 'ISBN' di depannya supaya
+    tidak salah tangkap nomor lain). Hasil dinormalisasi (tanpa strip/spasi)."""
+    if not text:
+        return ""
+    match = ISBN_RE.search(text)
+    if not match:
+        return ""
+    digits = re.sub(r"[-\s]", "", match.group(1))
+    if len(digits) in (10, 13):
+        return digits.upper()
+    return ""
+
+
+def _sanitize_filename_piece(value: str, max_len: int = 150) -> str:
+    """Buang karakter yang tidak boleh ada di nama file Windows/macOS/Linux."""
+    value = re.sub(r'[\\/:*?"<>|]', "", value or "").strip()
+    value = re.sub(r"\s+", " ", value)
+    return value[:max_len].rstrip(" .")
+
+
+def build_suggested_filename(doc_type: str, authors: str, year: str, title: str) -> str:
+    """Susun nama file sesuai konvensi TYPE_(Author, Year)_Judul yang dipakai
+    manual di batch-1/batch-2 project Rename File."""
+    author_part = _sanitize_filename_piece(authors, 80) or "Unknown"
+    year_part = _sanitize_filename_piece(year, 12) or "n.d."
+    title_part = _sanitize_filename_piece(title) or "Untitled"
+    doc_type = doc_type or "PAPER"
+    return f"{doc_type}_({author_part}, {year_part})_{title_part}"
+
+
+def lookup_crossref(doi: str, contact_email: Optional[str] = None, timeout: float = 8.0) -> Optional[dict]:
+    """Cari metadata via Crossref API (gratis, tanpa API key). contact_email
+    opsional tapi disarankan Crossref supaya request masuk 'polite pool'
+    (lebih jarang di-rate-limit) -- lihat https://api.crossref.org."""
+    url = f"https://api.crossref.org/works/{urllib.parse.quote(doi, safe='')}"
+    if contact_email:
+        url += f"?mailto={urllib.parse.quote(contact_email)}"
+    headers = {"User-Agent": f"katalog-pdf/0.2 (mailto:{contact_email or 'unknown@example.com'})"}
+    try:
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except (urllib.error.URLError, TimeoutError, ValueError, OSError):
+        return None
+
+    msg = data.get("message") or {}
+    author_list = msg.get("author") or []
+    author_names = ", ".join(a["family"].strip() for a in author_list if a.get("family"))
+    if not author_names:
+        author_names = ", ".join(a.get("name", "") for a in author_list if a.get("name"))
+
+    year = ""
+    for key in ("published-print", "published-online", "published", "issued"):
+        parts = (msg.get(key) or {}).get("date-parts")
+        if parts and parts[0] and parts[0][0]:
+            year = str(parts[0][0])
+            break
+
+    title = (msg.get("title") or [""])[0].strip()
+    work_type = msg.get("type", "")
+    if work_type in ("book", "monograph", "reference-book", "edited-book"):
+        doc_type = "BOOK"
+    elif work_type in ("book-chapter", "book-section", "book-part"):
+        doc_type = "BOOK_CHAPTER"
+    else:
+        doc_type = "PAPER"
+
+    if not title:
+        return None
+    return {"author": author_names, "year": year, "title": title, "type": doc_type, "source": "crossref"}
+
+
+def lookup_google_books(isbn: str, timeout: float = 8.0) -> Optional[dict]:
+    """Cari metadata via Google Books API (gratis, tanpa API key, tapi punya
+    rate limit per-IP -- makanya dipanggil dengan jeda, lihat lookup_delay di
+    suggest_renames())."""
+    url = f"https://www.googleapis.com/books/v1/volumes?q=isbn:{urllib.parse.quote(isbn)}"
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except (urllib.error.URLError, TimeoutError, ValueError, OSError):
+        return None
+
+    items = data.get("items") or []
+    if not items:
+        return None
+    info = items[0].get("volumeInfo", {})
+    authors = info.get("authors") or []
+    author_names = ", ".join(a.split()[-1] if " " in a else a for a in authors)
+    year = (info.get("publishedDate") or "")[:4]
+    title = (info.get("title") or "").strip()
+    if info.get("subtitle"):
+        title = f"{title}: {info['subtitle']}".strip()
+    if not title:
+        return None
+    return {"author": author_names, "year": year, "title": title, "type": "BOOK", "source": "google_books"}
+
+
+@dataclass
+class RenameSuggestion:
+    path: str = ""
+    filename: str = ""
+    doc_type: str = ""
+    authors: str = ""
+    year: str = ""
+    title: str = ""
+    doi: str = ""
+    isbn: str = ""
+    confidence: str = "Low"
+    source: str = ""
+    suggested_filename: str = ""
+    notes: str = ""
+
+
+@dataclass
+class RenameSuggestionResult:
+    total_found: int = 0
+    suggestions: list = field(default_factory=list)  # list[RenameSuggestion]
+    n_high: int = 0
+    n_medium: int = 0
+    n_low: int = 0
+    interrupted: bool = False
+    errors: list = field(default_factory=list)
+
+
+def suggest_renames(
+    folder: str,
+    max_pages: int = 25,
+    use_ocr: bool = False,
+    ocr_lang: str = "eng",
+    ocr_max_pages: int = 5,
+    ocr_dpi: int = 200,
+    contact_email: Optional[str] = None,
+    lookup_delay: float = 0.3,
+    progress_cb: Optional[Callable[[int, int, Path], None]] = None,
+    should_stop: Optional[Callable[[], bool]] = None,
+) -> RenameSuggestionResult:
+    """Scan folder, deteksi DOI/ISBN tiap PDF, cocokkan ke Crossref/Google
+    Books buat dapat penulis/tahun/judul yang akurat, lalu usulkan nama file
+    format TYPE_(Author, Year)_Judul.
+
+    Untuk PDF yang tidak punya DOI/ISBN yang bisa ditemukan/dicocokkan
+    (banyak dijumpai di buku lama, scan buram, atau judul berbahasa asing),
+    hasilnya ditandai confidence "Low" dan PERLU DICEK MANUAL -- fungsi ini
+    TIDAK menebak-nebak lewat riset web seperti yang dibantu Claude secara
+    manual di batch-1/batch-2. Tidak ada file yang benar-benar di-rename di
+    sini -- lihat write_rename_powershell_script() untuk itu.
+    """
+    pdf_files = list_pdfs(folder)
+    if not pdf_files:
+        raise FileNotFoundError(f"Tidak ada file PDF ditemukan di / No PDF files found in: {folder}")
+
+    result = RenameSuggestionResult(total_found=len(pdf_files))
+    seen_titles: dict = {}
+
+    for i, path in enumerate(pdf_files, start=1):
+        if should_stop is not None and should_stop():
+            result.interrupted = True
+            break
+
+        sugg = RenameSuggestion(path=str(path), filename=path.name)
+        try:
+            rec = read_pdf(
+                path, max_pages, use_ocr=use_ocr, ocr_lang=ocr_lang,
+                ocr_max_pages=ocr_max_pages, ocr_dpi=ocr_dpi,
+            )
+            full_text = rec.get("_full_text", "")
+
+            doi = extract_doi(full_text) or extract_doi(path.name)
+            isbn = extract_isbn(full_text) or extract_isbn(path.name)
+            sugg.doi, sugg.isbn = doi, isbn
+
+            meta = None
+            if doi:
+                meta = lookup_crossref(doi, contact_email=contact_email)
+                time.sleep(lookup_delay)
+            if not meta and isbn:
+                meta = lookup_google_books(isbn)
+                time.sleep(lookup_delay)
+
+            if meta:
+                sugg.doc_type = meta["type"]
+                sugg.authors = meta["author"] or "Unknown"
+                sugg.year = meta["year"]
+                sugg.title = meta["title"]
+                sugg.source = meta["source"]
+                sugg.confidence = "High" if (meta["author"] and meta["year"]) else "Medium"
+                if not meta["year"]:
+                    sugg.notes = "Tahun tidak ditemukan di hasil lookup -- cek manual"
+            else:
+                sugg.doc_type = "BOOK" if rec["pages"] > 60 else "PAPER"
+                sugg.authors = rec["author"] or ""
+                sugg.year = rec["year"] or ""
+                sugg.title = rec["title"] or path.stem.replace("_", " ").replace("-", " ")
+                sugg.confidence = "Low"
+                reason = "tidak ada DOI/ISBN yang terdeteksi" if not (doi or isbn) \
+                    else "DOI/ISBN terdeteksi tapi tidak ketemu di Crossref/Google Books"
+                sugg.notes = f"PERLU VERIFIKASI MANUAL ({reason})"
+
+            norm_title = re.sub(r"[^a-z0-9]+", "", sugg.title.lower())
+            if norm_title:
+                if norm_title in seen_titles and seen_titles[norm_title] != sugg.filename:
+                    dup_note = f"KEMUNGKINAN DUPLIKAT dari: {seen_titles[norm_title]}"
+                    sugg.notes = f"{sugg.notes} | {dup_note}" if sugg.notes else dup_note
+                else:
+                    seen_titles[norm_title] = sugg.filename
+
+            sugg.suggested_filename = build_suggested_filename(
+                sugg.doc_type, sugg.authors, sugg.year, sugg.title
+            ) + path.suffix
+
+        except Exception as e:
+            sugg.notes = f"ERROR: {e}"
+            sugg.confidence = "Low"
+            result.errors.append((str(path), str(e)))
+
+        result.suggestions.append(sugg)
+        if sugg.confidence == "High":
+            result.n_high += 1
+        elif sugg.confidence == "Medium":
+            result.n_medium += 1
+        else:
+            result.n_low += 1
+
+        if progress_cb is not None:
+            progress_cb(i, len(pdf_files), path)
+
+    return result
+
+
+def rename_suggestions_to_dataframe(result: RenameSuggestionResult) -> pd.DataFrame:
+    rows = [
+        {
+            "nama_file_asli": s.filename, "tipe": s.doc_type, "penulis": s.authors,
+            "tahun": s.year, "judul": s.title, "doi": s.doi, "isbn": s.isbn,
+            "confidence": s.confidence, "nama_file_usulan": s.suggested_filename,
+            "catatan": s.notes, "sumber": s.source, "path_lengkap": s.path,
+        }
+        for s in result.suggestions
+    ]
+    return pd.DataFrame(rows, columns=[
+        "nama_file_asli", "tipe", "penulis", "tahun", "judul", "doi", "isbn",
+        "confidence", "nama_file_usulan", "catatan", "sumber", "path_lengkap",
+    ])
+
+
+def save_rename_suggestions_to_excel(result: RenameSuggestionResult, output_path: str) -> int:
+    df = rename_suggestions_to_dataframe(result)
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Saran Rename"
+    ws.append(list(df.columns))
+    for row_idx, row in enumerate(df.itertuples(index=False), start=2):
+        for col_idx, value in enumerate(row, start=1):
+            write_cell_safely(ws, row_idx, col_idx, sanitize_for_excel(value))
+    wb.save(output_path)
+    return len(df)
+
+
+def write_rename_powershell_script(
+    result: RenameSuggestionResult, output_path: str, min_confidence: str = "High",
+) -> int:
+    """Tulis script PowerShell (Rename-Item, tanpa transfer isi file) untuk
+    baris dengan confidence >= min_confidence saja. SELALU review dulu isi
+    script-nya sebelum dijalankan -- ini cuma USULAN, bukan eksekusi otomatis."""
+    order = {"Low": 1, "Medium": 2, "High": 3}
+    threshold = order.get(min_confidence, 3)
+    lines = [
+        "# Auto-generated oleh katalog-pdf (suggest-renames) -- REVIEW dulu isinya",
+        "# sebelum dijalankan! Setiap baris cuma me-rename di tempat (nama folder",
+        "# tidak berubah), tidak ada isi file yang diubah/dipindah.",
+        "",
+    ]
+    n = 0
+    for s in result.suggestions:
+        if order.get(s.confidence, 0) < threshold or not s.suggested_filename:
+            continue
+        old_path = str(Path(s.path))
+        new_name = s.suggested_filename.replace('"', "'")
+        lines.append(f'Rename-Item -LiteralPath "{old_path}" -NewName "{new_name}"')
+        n += 1
+    Path(output_path).write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return n
 
 
 # ---------------------------------------------------------------------------
@@ -590,6 +906,148 @@ def duplicates_to_dataframe(result: DuplicateResult) -> pd.DataFrame:
     rows = [row for group in result.groups for row in group]
     return pd.DataFrame(rows, columns=[
         "grup_duplikat", "jumlah_salinan", "status_saran", "nama_file", "ukuran_kb", "path_lengkap",
+    ])
+
+
+# ---------------------------------------------------------------------------
+# Duplikat MIRIP berdasarkan isi teks (bukan hash exact) -- menangkap kasus
+# scan/edisi berbeda dari buku yang sama yang tidak akan ketahuan oleh
+# find_duplicates() karena isi filenya secara byte tidak identik. Pola ini
+# sebelumnya dipakai manual (fuzzy text-similarity) di project "Rename File".
+# ---------------------------------------------------------------------------
+
+@dataclass
+class NearDuplicateResult:
+    total_checked: int = 0
+    groups: list = field(default_factory=list)  # list of list[dict]
+    errors: list = field(default_factory=list)
+
+
+def _text_similarity(a: str, b: str) -> float:
+    if not a or not b:
+        return 0.0
+    return difflib.SequenceMatcher(None, a, b, autojunk=False).quick_ratio()
+
+
+def find_near_duplicates(
+    folder: str,
+    max_pages: int = 10,
+    use_ocr: bool = False,
+    ocr_lang: str = "eng",
+    min_shared_keywords: int = 2,
+    similarity_threshold: float = 0.6,
+    progress_cb: Optional[Callable[[int, int], None]] = None,
+) -> NearDuplicateResult:
+    """Bandingkan ISI (bukan hash) tiap PDF buat cari kemungkinan duplikat
+    yang byte-nya berbeda -- misal buku yang sama di-scan dua kali dengan
+    kualitas beda, atau edisi cetak ulang yang isinya nyaris sama.
+
+    Supaya tidak harus membandingkan setiap pasang file satu-per-satu (bisa
+    sangat lambat untuk koleksi besar), file dikelompokkan dulu lewat kata
+    kunci yang sama (inverted index, mirip cara mesin pencari bekerja) --
+    baru pasangan yang berbagi minimal `min_shared_keywords` kata kunci
+    diperiksa lebih detail lewat kemiripan teks (difflib). Ini heuristik,
+    bukan jaminan 100% -- selalu cek manual sebelum menghapus apa pun,
+    terutama kalau jumlah halaman kedua file berbeda jauh (ditandai di
+    kolom 'catatan').
+    """
+    pdf_files = list_pdfs(folder)
+    if not pdf_files:
+        raise FileNotFoundError(f"Tidak ada file PDF ditemukan di / No PDF files found in: {folder}")
+
+    docs = []
+    errors = []
+    for i, path in enumerate(pdf_files, start=1):
+        try:
+            rec = read_pdf(path, max_pages, use_ocr=use_ocr, ocr_lang=ocr_lang)
+            keywords = {k.strip() for k in rec["keywords"].split(",") if k.strip()}
+            docs.append({
+                "path": path,
+                "pages": rec["pages"],
+                "size_kb": rec["size_kb"],
+                "title": rec["title"],
+                "keywords": keywords,
+                "text": rec.get("_full_text", "")[:4000],
+            })
+        except Exception as e:
+            errors.append((str(path), str(e)))
+        if progress_cb is not None:
+            progress_cb(i, len(pdf_files))
+
+    # Inverted index: kata kunci -> indeks dokumen yang mengandungnya. Kata
+    # kunci yang muncul di terlalu banyak dokumen (>50) dianggap tidak
+    # distingtif (misal "abstract", "chapter") dan dilewati.
+    inverted: dict = defaultdict(set)
+    for idx, d in enumerate(docs):
+        for kw in d["keywords"]:
+            inverted[kw].add(idx)
+
+    shared_count: dict = defaultdict(int)
+    for kw, idxs in inverted.items():
+        if len(idxs) < 2 or len(idxs) > 50:
+            continue
+        for a, b in itertools.combinations(sorted(idxs), 2):
+            shared_count[(a, b)] += 1
+
+    # Union-find sederhana buat gabungkan pasangan yang mirip jadi satu grup
+    # (misal A mirip B, B mirip C -> A, B, C jadi satu grup).
+    parent = list(range(len(docs)))
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(x, y):
+        rx, ry = find(x), find(y)
+        if rx != ry:
+            parent[rx] = ry
+
+    for (a, b), n_shared in shared_count.items():
+        if n_shared < min_shared_keywords:
+            continue
+        if _text_similarity(docs[a]["text"], docs[b]["text"]) >= similarity_threshold:
+            union(a, b)
+
+    clusters: dict = defaultdict(list)
+    for idx in range(len(docs)):
+        clusters[find(idx)].append(idx)
+
+    result = NearDuplicateResult(total_checked=len(docs), errors=errors)
+    group_id = 0
+    for idxs in clusters.values():
+        if len(idxs) < 2:
+            continue
+        group_id += 1
+        idxs_sorted = sorted(idxs, key=lambda i: (-docs[i]["pages"], docs[i]["path"].stat().st_mtime))
+        ref_pages = docs[idxs_sorted[0]]["pages"]
+        group_rows = []
+        for rank, idx in enumerate(idxs_sorted):
+            d = docs[idx]
+            page_note = "" if d["pages"] == ref_pages else \
+                f"⚠ jumlah halaman beda ({d['pages']} vs {ref_pages}) -- cek manual dulu"
+            group_rows.append({
+                "grup_mirip": group_id,
+                "jumlah_salinan": len(idxs_sorted),
+                "status_saran": "kandidat simpan" if rank == 0 else "cek sebelum dihapus",
+                "nama_file": d["path"].name,
+                "judul_terdeteksi": d["title"],
+                "halaman": d["pages"],
+                "ukuran_kb": d["size_kb"],
+                "catatan": page_note,
+                "path_lengkap": str(d["path"]),
+            })
+        result.groups.append(group_rows)
+
+    return result
+
+
+def near_duplicates_to_dataframe(result: NearDuplicateResult) -> pd.DataFrame:
+    rows = [row for group in result.groups for row in group]
+    return pd.DataFrame(rows, columns=[
+        "grup_mirip", "jumlah_salinan", "status_saran", "nama_file", "judul_terdeteksi",
+        "halaman", "ukuran_kb", "catatan", "path_lengkap",
     ])
 
 

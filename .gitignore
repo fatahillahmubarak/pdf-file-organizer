@@ -12,3 +12,6 @@ venv/
 !contoh/*.xlsx
 *.zip
 /KatalogPDF-v0.2.0-windows
+
+# Backup otomatis sebelum merge fitur baru (dibuat sesi Claude 2026-09-16)
+katalog_pdf/_backup_before_merge_*/
